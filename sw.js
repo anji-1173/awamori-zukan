@@ -1,5 +1,7 @@
-// 島酒図鑑 offline service worker
-const CACHE = 'shimasake-v1';
+// 島酒図鑑 service worker
+// Network-first for the HTML shell (so updates always reach the user when
+// online), stale-while-revalidate for static assets, cache fallback offline.
+const CACHE = 'shimasake-v2';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +10,10 @@ const ASSETS = [
   './icon-512.png',
   './apple-touch-icon.png'
 ];
+
+self.addEventListener('message', (event) => {
+  if (event.data === 'skip') self.skipWaiting();
+});
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -24,15 +30,33 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then((hit) => {
-      if (hit) return hit;
-      return fetch(event.request).then((resp) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const accept = req.headers.get('accept') || '';
+  const isHTML = req.mode === 'navigate' || accept.includes('text/html');
+
+  if (isHTML) {
+    // Network-first: fetch fresh, update cache, fall back to cache when offline.
+    event.respondWith(
+      fetch(req).then((resp) => {
         const copy = resp.clone();
-        caches.open(CACHE).then((cache) => cache.put(event.request, copy)).catch(() => {});
+        caches.open(CACHE).then((c) => c.put('./index.html', copy)).catch(() => {});
         return resp;
-      }).catch(() => caches.match('./index.html'));
+      }).catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Static assets: stale-while-revalidate.
+  event.respondWith(
+    caches.match(req).then((hit) => {
+      const network = fetch(req).then((resp) => {
+        const copy = resp.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+        return resp;
+      }).catch(() => hit);
+      return hit || network;
     })
   );
 });
