@@ -1,7 +1,7 @@
 // 島酒図鑑 service worker
 // Network-first for the HTML shell (so updates always reach the user when
 // online), stale-while-revalidate for static assets, cache fallback offline.
-const CACHE = 'shimasake-v2';
+const CACHE = 'shimasake-v3';
 const ASSETS = [
   './',
   './index.html',
